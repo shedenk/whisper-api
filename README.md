@@ -6,12 +6,15 @@ A Docker-based REST API for OpenAI's Whisper speech-to-text model using [whisper
 
 - 🎤 REST API for audio transcription
 - 🐳 Docker support with docker-compose
+- ⚡ **Async processing with Redis + Celery** for long audio files
 - 📊 Multiple model support (tiny, base, small, medium, large)
 - 🌍 Multi-language support
 - 📈 Fast CPU inference with whisper.cpp
 - 🔄 Model management (list, download)
 - 📝 JSON output with segment details
 - 🏥 Health checks and monitoring
+- 📊 Job queue & status tracking
+- 🔀 Scalable worker architecture
 
 ## Quick Start
 
@@ -49,13 +52,41 @@ curl http://localhost:8000/api/v1/models
 
 ### Usage Examples
 
-#### Transcribe Audio
+#### Synchronous Transcription (Small files)
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/transcribe \
   -F "file=@audio.mp3" \
   -F "model=base.en" \
   -F "language=en"
+```
+
+#### Async Transcription (Large files, 1+ hour)
+
+```bash
+# Submit job
+curl -X POST http://localhost:8000/api/v1/transcribe-async \
+  -F "file=@long_audio.mp3" \
+  -F "model=base.en"
+
+# Response:
+# {
+#   "status": "submitted",
+#   "job_id": "abc-123-def-456",
+#   "poll_url": "/api/v1/job/abc-123-def-456"
+# }
+
+# Check status
+curl http://localhost:8000/api/v1/job/abc-123-def-456
+
+# Get result
+curl http://localhost:8000/api/v1/result/abc-123-def-456
+
+# List all jobs
+curl http://localhost:8000/api/v1/jobs?status=completed
+
+# Cancel job
+curl -X DELETE http://localhost:8000/api/v1/job/abc-123-def-456
 ```
 
 #### Download a Model
@@ -70,39 +101,42 @@ curl -X POST http://localhost:8000/api/v1/download-model/base.en
 curl http://localhost:8000/api/v1/info
 ```
 
+## Architecture
+
+### Synchronous Mode
+
+- Direct API request → Processing → Response
+- Suitable for: Small files (<10min), immediate response needed
+- Timeout: 10 minutes
+
+### Async Mode (with Redis + Celery)
+
+- API request → Queue → Worker processes → Polling for result
+- Suitable for: Large files (>10min), batch processing, scalability
+- Multiple workers can process jobs in parallel
+- Job results cached in Redis for 24 hours
+
 ## API Endpoints
 
-### `GET /health`
+### Health & Info
+
+#### `GET /health`
 
 Health check endpoint.
 
-**Response:**
+#### `GET /api/v1/info`
 
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T12:00:00.000000",
-  "service": "whisper-api"
-}
-```
+Get API and system information.
 
-### `GET /api/v1/models`
+### Synchronous Endpoints
+
+#### `GET /api/v1/models`
 
 List available Whisper models.
 
-**Response:**
+#### `POST /api/v1/transcribe`
 
-```json
-{
-  "status": "success",
-  "models": ["base.en", "small.en", "medium.en"],
-  "count": 3
-}
-```
-
-### `POST /api/v1/transcribe`
-
-Transcribe audio file.
+Transcribe audio file synchronously.
 
 **Parameters:**
 
@@ -124,8 +158,7 @@ Transcribe audio file.
       "seek": 0,
       "start": 0.0,
       "end": 3.2,
-      "text": "Segment text",
-      "tokens": [...]
+      "text": "Segment text"
     }
   ],
   "model": "base.en",
@@ -133,7 +166,74 @@ Transcribe audio file.
 }
 ```
 
-### `POST /api/v1/download-model/<model_name>`
+### Async Endpoints
+
+#### `POST /api/v1/transcribe-async`
+
+Submit audio for async transcription.
+
+**Parameters:** Same as `/api/v1/transcribe`
+
+**Response (202 Accepted):**
+
+```json
+{
+  "status": "submitted",
+  "job_id": "uuid-string",
+  "message": "Job submitted for processing",
+  "poll_url": "/api/v1/job/uuid-string",
+  "result_url": "/api/v1/result/uuid-string"
+}
+```
+
+#### `GET /api/v1/job/{job_id}`
+
+Get transcription job status.
+
+**Response:**
+
+```json
+{
+  "status": "queued|processing|completed|failed",
+  "job_id": "uuid-string",
+  "celery_status": "PENDING|PROCESSING|SUCCESS|FAILURE",
+  "progress": 0-100,
+  "message": "Status message",
+  "model": "base.en",
+  "submitted_at": "2024-01-01T12:00:00"
+}
+```
+
+#### `GET /api/v1/result/{job_id}`
+
+Get transcription result (when job is completed).
+
+**Response:** Same as sync endpoint (transcription result)
+
+#### `GET /api/v1/jobs`
+
+List all jobs with optional filtering.
+
+**Query parameters:**
+
+- `status`: Filter by status (submitted, processing, completed, failed)
+- `limit`: Number of jobs to return (default: 50)
+
+#### `DELETE /api/v1/job/{job_id}`
+
+Cancel a pending or processing job.
+
+**Response:**
+
+```json
+{
+  "status": "success",
+  "job_id": "uuid-string",
+  "message": "Job cancelled successfully"
+}
+```
+
+#### `POST /api/v1/download-model/<model_name>`
 
 Download a specific Whisper model.
 
@@ -154,23 +254,76 @@ Download a specific Whisper model.
 }
 ```
 
-### `GET /api/v1/info`
+## Scaling Workers
 
-Get API and system information.
+By default, docker-compose starts 2 Celery workers. To scale:
 
-**Response:**
+```bash
+# Scale to 4 workers
+docker-compose up -d --scale celery-worker-1=2 --scale celery-worker-2=2
 
-```json
-{
-  "status": "success",
-  "api_version": "1.0.0",
-  "service": "Whisper.cpp API",
-  "timestamp": "2024-01-01T12:00:00.000000",
-  "upload_path": "/app/uploads",
+# Or modify docker-compose.yml and add more worker services
+```
+
+Each worker processes one task at a time (concurrency=1) for optimal resource usage.
+
+## Configuration
+
+### Environment Variables
+
+Key configuration variables (in docker-compose.yml or .env):
+
+```bash
+# API
+API_HOST=0.0.0.0
+API_PORT=8000
+
+# Paths
+MODEL_PATH=/app/models
+UPLOAD_PATH=/app/uploads
+
+# Processing
+THREADS=4                    # CPU threads per task
+DEFAULT_MODEL=base.en
+
+# Redis/Celery
+REDIS_PASSWORD=whisper-redis-pass
+CELERY_BROKER_URL=redis://...
+CELERY_RESULT_BACKEND=redis://...
+
+# Logging
+LOG_LEVEL=INFO
+DEBUG=False
+```
+
+### Docker Compose Services
+
+- **redis**: Message broker & result backend
+- **whisper-api**: REST API server
+- **celery-worker-1, celery-worker-2**: Background job processors
+
+## When to Use Each Mode
+
+### Use Synchronous (`/api/v1/transcribe`)
+
+- Audio files < 10 minutes
+- Need immediate response
+- Simple integration
+- Single user/request at a time
+
+### Use Async (`/api/v1/transcribe-async`)
+
+- Audio files > 10 minutes (up to 1+ hour)
+- Multiple concurrent users
+- Can poll for results
+- Need job management
+- Want to scale horizontally
+- Handle long-running jobs gracefully
   "model_path": "/app/models",
   "threads": 4
-}
-```
+  }
+
+````
 
 ## Configuration
 
@@ -194,7 +347,7 @@ THREADS=4
 # Logging
 LOG_LEVEL=INFO
 DEBUG=False
-```
+````
 
 ### Docker Compose Configuration
 
@@ -314,4 +467,5 @@ See the respective projects for licensing information:
 
 - [Whisper](https://github.com/openai/whisper) - MIT License
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) - MIT License
+
 # whisper-api

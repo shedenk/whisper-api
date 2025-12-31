@@ -1,0 +1,119 @@
+version: "3.8"
+
+services:
+  # Redis - Job queue and cache
+  redis:
+    image: redis:7-alpine
+    container_name: whisper-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-whisper-redis-pass}
+    restart: always
+    networks:
+      - internal-net
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD:-whisper-redis-pass}",
+          "ping",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # API Server
+  whisper-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: whisper-api-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./uploads:/app/uploads
+      - ./whisper-models:/app/whisper.cpp/models
+    environment:
+      - MODEL_PATH=/app/models
+      - UPLOAD_PATH=/app/uploads
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - THREADS=4
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+    networks:
+      - internal-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Celery Worker 1
+  celery-worker-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: whisper-worker-1
+    command: celery -A celery_app.app worker --loglevel=info --concurrency=1 -n worker1@%h
+    volumes:
+      - ./models:/app/models
+      - ./uploads:/app/uploads
+      - ./whisper-models:/app/whisper.cpp/models
+    environment:
+      - MODEL_PATH=/app/models
+      - UPLOAD_PATH=/app/uploads
+      - THREADS=4
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/1
+    depends_on:
+      redis: condialways
+    networks:
+      - internal-net
+  # Celery Worker 2
+  celery-worker-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: whisper-worker-2
+    command: celery -A celery_app.app worker --loglevel=info --concurrency=1 -n worker2@%h
+    volumes:
+      - ./models:/app/models
+      - ./whisper-models:/app/whisper.cpp/models
+      - ./uploads:/app/uploads
+    environment:
+      - MODEL_PATH=/app/models
+      - UPLOAD_PATH=/app/uploads
+      - THREADS=4
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - interalways
+
+volumes:
+  redis-data:
+
+networks:
+  internal-net:
+    external: true
