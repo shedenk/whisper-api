@@ -32,7 +32,7 @@ services:
       dockerfile: Dockerfile
     container_name: whisper-api-server
     ports:
-      - "8000:8000"
+      - "8001:8000"
     volumes:
       - ./models:/app/models
       - ./uploads:/app/uploads
