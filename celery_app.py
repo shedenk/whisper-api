@@ -24,7 +24,7 @@ app.conf.update(
     task_track_started=True,
     task_time_limit=30 * 60,  # 30 minutes hard limit
     task_soft_time_limit=25 * 60,  # 25 minutes soft limit
-    result_expires=3600,  # Results expire after 1 hour
+    result_expires=86400,  # Results expire after 24 hours (matches JOB_RESULT_EXPIRY)
     worker_prefetch_multiplier=1,  # Fetch one task at a time
     worker_max_tasks_per_child=1000,
     task_compression='gzip',

@@ -34,9 +34,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Redis connection
+# Redis connection with connection pooling
 try:
-    redis_client = redis.from_url(app.config['REDIS_URL'])
+    redis_client = redis.from_url(
+        app.config['REDIS_URL'],
+        max_connections=50,
+        decode_responses=True  # Auto decode bytes to strings
+    )
     redis_client.ping()
     logger.info("Connected to Redis")
 except Exception as e:
@@ -136,10 +140,23 @@ def transcribe_audio(audio_path: str, model: str = 'base.en', language: Optional
             # Clean up JSON output file
             os.remove(output_json_path)
             
+            # Extract text and segments from whisper output
+            # Handle different output formats
+            transcription_text = ''
+            segments = []
+            
+            if 'result' in data and isinstance(data['result'], list):
+                segments = data['result']
+                # Combine all segment text
+                transcription_text = ' '.join([seg.get('text', '').strip() for seg in segments if seg.get('text')])
+            elif 'transcription' in data:
+                transcription_text = data.get('transcription', '')
+                segments = data.get('segments', [])
+            
             return {
                 'status': 'success',
-                'text': data.get('result', [{}])[0].get('text', '') if data.get('result') else '',
-                'segments': data.get('result', []),
+                'text': transcription_text,
+                'segments': segments,
                 'model': model,
                 'language': language or 'auto'
             }
@@ -222,13 +239,31 @@ def transcribe():
                 'message': 'Empty filename'
             }), 400
         
+        # Validate file size
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+        file.seek(0)
+        
+        if file_size > app.config['MAX_CONTENT_LENGTH']:
+            return jsonify({
+                'status': 'error',
+                'message': f'File too large. Maximum size: {app.config["MAX_CONTENT_LENGTH"] / (1024*1024):.0f}MB'
+            }), 413
+        
+        if file_size == 0:
+            return jsonify({
+                'status': 'error',
+                'message': 'Empty file'
+            }), 400
+        
         # Get parameters
         model = request.form.get('model', 'base.en')
         language = request.form.get('language', None)
         
         # Validate model exists (basic check)
-        if not (os.path.exists(f"{WHISPER_MODELS_DIR}/{model}.bin") or 
-                os.path.exists(f"{app.config['MODEL_PATH']}/{model}.bin")):
+        model_name = model if model.endswith('.bin') else f"{model}.bin"
+        if not (os.path.exists(f"{WHISPER_MODELS_DIR}/{model_name}") or 
+                os.path.exists(f"{app.config['MODEL_PATH']}/{model_name}")):
             logger.warning(f"Model {model} may not be available")
         
         # Save uploaded file
@@ -245,8 +280,8 @@ def transcribe():
         # Cleanup
         try:
             os.remove(filepath)
-        except:
-            pass
+        except OSError as e:
+            logger.warning(f"Failed to remove uploaded file {filepath}: {e}")
         
         return jsonify(result), 200
         
@@ -470,9 +505,9 @@ def get_job_status(job_id):
         response = {
             'job_id': job_id,
             'celery_status': task.state,
-            'submitted_at': job_data.get(b'submitted_at', b'').decode(),
-            'model': job_data.get(b'model', b'').decode(),
-            'language': job_data.get(b'language', b'').decode()
+            'submitted_at': job_data.get('submitted_at', ''),
+            'model': job_data.get('model', ''),
+            'language': job_data.get('language', '')
         }
         
         # Map Celery states to custom status
@@ -627,17 +662,18 @@ def list_jobs():
         
         jobs = []
         for key in job_keys[:limit]:
-            job_id = key.decode().replace('job:', '')
-            job_data = redis_client.hgetall(key)
+            job_id = key.decode() if isinstance(key, bytes) else key
+            job_id = job_id.replace('job:', '')
+            job_data = redis_client.hgetall(f'job:{job_id}')
             
             task = celery_app.AsyncResult(job_id)
             
             job_info = {
                 'job_id': job_id,
                 'celery_status': task.state,
-                'submitted_at': job_data.get(b'submitted_at', b'').decode(),
-                'model': job_data.get(b'model', b'').decode(),
-                'filename': job_data.get(b'filename', b'').decode()
+                'submitted_at': job_data.get('submitted_at', ''),
+                'model': job_data.get('model', ''),
+                'filename': job_data.get('filename', '')
             }
             
             # Add Celery state

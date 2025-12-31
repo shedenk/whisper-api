@@ -37,6 +37,8 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app.py .
 COPY config.py .
+COPY celery_app.py .
+COPY celery_worker.py .
 
 # Create models directory
 RUN mkdir -p models

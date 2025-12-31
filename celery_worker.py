@@ -115,8 +115,8 @@ def transcribe_audio_task(self, audio_path: str, model: str = 'base.en',
         # Clean up JSON output file
         try:
             os.remove(output_json_path)
-        except:
-            pass
+        except OSError as e:
+            logger.warning(f"[{job_id}] Failed to remove JSON output: {e}")
         
         # Extract transcription text
         transcription_text = ''

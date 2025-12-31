@@ -82,7 +82,9 @@ services:
       - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/0
       - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-whisper-redis-pass}@redis:6379/1
     depends_on:
-      redis: condialways
+      redis:
+        condition: service_healthy
+    restart: always
     networks:
       - internal-net
   # Celery Worker 2
@@ -109,7 +111,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - interalways
+      - internal-net
 
 volumes:
   redis-data:
