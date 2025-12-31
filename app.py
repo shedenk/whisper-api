@@ -305,8 +305,8 @@ def download_model(model_name):
     try:
         model_name = secure_filename(model_name)
         
-        # Download model script is in whisper.cpp
-        download_script = '/app/whisper.cpp/models/download-ggml-model.sh'
+        # Download model script path (moved to /app to avoid volume shadowing)
+        download_script = '/app/download-ggml-model.sh'
         
         if not os.path.exists(download_script):
             return jsonify({

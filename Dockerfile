@@ -29,6 +29,8 @@ WORKDIR /app
 
 # Copy whisper.cpp from builder
 COPY --from=builder /build/whisper.cpp /app/whisper.cpp
+COPY --from=builder /build/whisper.cpp/models/download-ggml-model.sh /app/download-ggml-model.sh
+RUN chmod +x /app/download-ggml-model.sh
 
 # Install Python dependencies
 COPY requirements.txt .
