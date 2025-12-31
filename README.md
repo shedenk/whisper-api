@@ -438,6 +438,39 @@ docker-compose down
 docker-compose down -v
 ```
 
+## Connecting from Other Containers (e.g., n8n)
+
+To connect to Whisper API from another Docker container (like n8n) running on the same server:
+
+1.  **Ensure Shared Network**: Both containers must be on the same Docker network.
+    This project uses an external network named `internal-net`.
+
+    Create the network if it doesn't exist:
+    ```bash
+    docker network create internal-net
+    ```
+
+2.  **Add Your Container to the Network**:
+    Add `internal-net` to your tool's `docker-compose.yml`:
+
+    ```yaml
+    services:
+      n8n:
+        # ... other config ...
+        networks:
+          - internal-net
+
+    networks:
+      internal-net:
+        external: true
+    ```
+
+3.  **Use the Internal URL**:
+    Access the API using the container name and internal port (8000):
+    `http://whisper-api-server:8000/api/v1/models`
+
+    *Note: Do not use `localhost` or the VPS IP address when connecting from inside another container.*
+
 ## Production Deployment
 
 For production, consider:
