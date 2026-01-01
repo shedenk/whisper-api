@@ -43,6 +43,7 @@ COPY app.py .
 COPY config.py .
 COPY celery_app.py .
 COPY celery_worker.py .
+COPY utils.py .
 
 # Create models directory
 RUN mkdir -p models

@@ -224,37 +224,71 @@ def transcribe():
         - language: Language code (optional, e.g., en, es, fr)
     """
     try:
-        # Check file upload
-        if 'file' not in request.files:
+        # Handle input: either file upload or URL
+        filepath = None
+        
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'status': 'error', 'message': 'Empty filename'}), 400
+            
+            # Validate file size
+            file.seek(0, os.SEEK_END)
+            file_size = file.tell()
+            file.seek(0)
+            
+            if file_size > app.config['MAX_CONTENT_LENGTH']:
+                return jsonify({
+                    'status': 'error',
+                    'message': f'File too large. Maximum size: {app.config["MAX_CONTENT_LENGTH"] / (1024*1024):.0f}MB'
+                }), 413
+            
+            if file_size == 0:
+                return jsonify({'status': 'error', 'message': 'Empty file'}), 400
+                
+            # Save uploaded file
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+            file.save(filepath)
+            
+        elif 'file_url' in request.form:
+            file_url = request.form['file_url']
+            try:
+                from utils import download_file_from_url
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                temp_filename = f"{timestamp}_url_download"
+                temp_path = os.path.join(app.config['UPLOAD_FOLDER'], temp_filename)
+                
+                # Download using utility (it handles size validation)
+                filepath = download_file_from_url(
+                    file_url, 
+                    app.config['UPLOAD_FOLDER'], 
+                    app.config['MAX_CONTENT_LENGTH']
+                )
+                
+                # Rename to add timestamp if not already added by download util
+                start_path = filepath
+                filename = os.path.basename(filepath)
+                if not filename.startswith(timestamp):
+                    new_path = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+                    os.rename(start_path, new_path)
+                    filepath = new_path
+                    
+                logger.info(f"File downloaded from URL: {filepath}")
+                
+            except ValueError as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 400
+            except Exception as e:
+                logger.error(f"Download failed: {e}")
+                return jsonify({'status': 'error', 'message': 'Failed to process URL'}), 500
+        else:
             return jsonify({
                 'status': 'error',
-                'message': 'No audio file provided'
+                'message': 'No audio file or URL provided. Send "file" or "file_url"'
             }), 400
         
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'Empty filename'
-            }), 400
-        
-        # Validate file size
-        file.seek(0, os.SEEK_END)
-        file_size = file.tell()
-        file.seek(0)
-        
-        if file_size > app.config['MAX_CONTENT_LENGTH']:
-            return jsonify({
-                'status': 'error',
-                'message': f'File too large. Maximum size: {app.config["MAX_CONTENT_LENGTH"] / (1024*1024):.0f}MB'
-            }), 413
-        
-        if file_size == 0:
-            return jsonify({
-                'status': 'error',
-                'message': 'Empty file'
-            }), 400
+        logger.info(f"Processing file: {filepath}")
         
         # Get parameters
         model = request.form.get('model', 'base.en')
@@ -265,14 +299,6 @@ def transcribe():
         if not (os.path.exists(f"{WHISPER_MODELS_DIR}/{model_name}") or 
                 os.path.exists(f"{app.config['MODEL_PATH']}/{model_name}")):
             logger.warning(f"Model {model} may not be available")
-        
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
-        
-        file.save(filepath)
-        logger.info(f"File saved: {filepath}")
         
         # Transcribe
         result = transcribe_audio(filepath, model=model, language=language)
@@ -286,12 +312,22 @@ def transcribe():
         return jsonify(result), 200
         
     except WhisperError as e:
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except:
+                pass
         logger.error(f"Whisper error: {str(e)}")
         return jsonify({
             'status': 'error',
             'message': str(e)
         }), 400
     except Exception as e:
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except:
+                pass
         logger.error(f"Unexpected error: {str(e)}")
         return jsonify({
             'status': 'error',
@@ -399,32 +435,57 @@ def transcribe_async():
         }), 503
     
     try:
-        # Check file upload
-        if 'file' not in request.files:
+        # Handle input: either file upload or URL
+        filepath = None
+        filename = None
+        
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                return jsonify({'status': 'error', 'message': 'Empty filename'}), 400
+                
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+            file.save(filepath)
+            
+        elif 'file_url' in request.form:
+            file_url = request.form['file_url']
+            try:
+                from utils import download_file_from_url
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
+                
+                # Download using utility
+                filepath = download_file_from_url(
+                    file_url, 
+                    app.config['UPLOAD_FOLDER'], 
+                    app.config['MAX_CONTENT_LENGTH']
+                )
+                
+                # Rename if needed
+                start_path = filepath
+                filename = os.path.basename(filepath)
+                if not filename.startswith(timestamp):
+                    new_path = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+                    os.rename(start_path, new_path)
+                    filepath = new_path
+                    filename = os.path.basename(filepath)
+                    
+                logger.info(f"File downloaded from URL for async: {filepath}")
+                
+            except ValueError as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 400
+        else:
             return jsonify({
                 'status': 'error',
-                'message': 'No audio file provided'
+                'message': 'No audio file or URL provided. Send "file" or "file_url"'
             }), 400
-        
-        file = request.files['file']
-        
-        if file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'Empty filename'
-            }), 400
+            
+        logger.info(f"Processing async file: {filepath}")
         
         # Get parameters
         model = request.form.get('model', 'base.en')
         language = request.form.get('language', None)
-        
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
-        
-        file.save(filepath)
-        logger.info(f"File saved for async processing: {filepath}")
         
         # Submit task to Celery
         task = transcribe_audio_task.delay(
@@ -462,6 +523,13 @@ def transcribe_async():
         }), 202
         
     except Exception as e:
+        # Cleanup file if submission failed
+        if filepath and os.path.exists(filepath):
+            try:
+                os.remove(filepath)
+            except:
+                pass
+                
         logger.error(f"Error submitting async job: {str(e)}")
         return jsonify({
             'status': 'error',
