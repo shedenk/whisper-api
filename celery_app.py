@@ -7,7 +7,7 @@ import os
 from celery import Celery
 
 # Initialize Celery app
-app = Celery('whisper_api')
+app = Celery('whisper_api', include=['celery_worker'])
 
 # Load configuration from environment
 broker_url = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
