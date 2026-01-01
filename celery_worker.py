@@ -70,8 +70,20 @@ def transcribe_audio_task(self, audio_path: str, model: str = 'base.en',
         file_size_mb = file_size / (1024 * 1024)
         logger.info(f"[{job_id}] File size: {file_size_mb:.2f}MB")
         
+        # Resolve model path
+        from utils import resolve_model_path
+        # We need config values here. Config is already imported.
+        model_path = resolve_model_path(
+            model, 
+            '/app/whisper.cpp/models',  # Internal default
+            os.getenv('MODEL_PATH', '/app/models')  # Custom path
+        )
+        
+        if not os.path.exists(model_path):
+             raise TranscriptionError(f"Model file not found: {model_path}")
+
         # Build whisper command
-        cmd = [WHISPER_MAIN, '-m', model, audio_path]
+        cmd = [WHISPER_MAIN, '-m', model_path, '-f', audio_path]
         
         if language:
             cmd.extend(['-l', language])

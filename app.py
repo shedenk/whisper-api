@@ -124,8 +124,15 @@ def transcribe_audio(audio_path: str, model: str = 'base.en', language: Optional
         raise WhisperError("Invalid audio file format")
     
     try:
+        # Resolve model path
+        from utils import resolve_model_path
+        model_path = resolve_model_path(model, WHISPER_MODELS_DIR, app.config['MODEL_PATH'])
+        
+        if not os.path.exists(model_path):
+             raise WhisperError(f"Model file not found: {model_path}")
+
         # Build whisper command
-        cmd = [WHISPER_MAIN, '-m', model, audio_path]
+        cmd = [WHISPER_MAIN, '-m', model_path, '-f', audio_path]
         
         if language:
             cmd.extend(['-l', language])
@@ -362,29 +369,21 @@ def download_model(model_name):
     try:
         model_name = secure_filename(model_name)
         
+        # Import utility
+        from utils import resolve_model_path
+        
         # Define model URL (HuggingFace)
-        # Handle cases where user passes 'base.en' or just 'base'
-        # The script usually expects just the name part for ggml-name.bin
-        # But here we construct the URL manually.
-        # Standard format: ggml-{model}.bin
-        
-        # Valid models: tiny, tiny.en, base, base.en, small, small.en, medium, medium.en, large-v1, large-v2, large-v3
-        
         target_file = f"ggml-{model_name}.bin"
         if model_name.endswith('.bin'):
             target_file = model_name
             
         url = f"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{target_file}"
         
-        # Support old URL format fallback if needed or different naming convention
-        # actually, standard models are just ggml-name.bin
-        
         logger.info(f"Downloading model {model_name} from {url}")
         
-        save_path = os.path.join(WHISPER_MODELS_DIR, target_file)
-        
-        # Use our utility function if available, or requests directly
-        # Since we want to save into models dir, let's do it here
+        # Save to CUSTOM model path (mounted volume) so user can see it
+        # This fixes "empty models folder" issue
+        save_path = os.path.join(app.config['MODEL_PATH'], target_file)
         
         if os.path.exists(save_path):
              logger.info(f"Model {model_name} already exists at {save_path}")

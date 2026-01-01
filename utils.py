@@ -72,6 +72,48 @@ def download_file_from_url(url: str, upload_folder: str, max_size_bytes: int) ->
             os.remove(filepath)
         raise e
 
+def resolve_model_path(model_name: str, internal_dir: str, custom_dir: str) -> str:
+    """
+    Resolve the absolute path of a model file
+    
+    Args:
+        model_name: Name of the model (e.g., 'base', 'base.en', 'ggml-base.bin')
+        internal_dir: Internal whisper.cpp models directory
+        custom_dir: User-mounted models directory
+        
+    Returns:
+        Absolute path to the model file
+        
+    Raises:
+        FileNotFoundError: If model is not found in either directory
+    """
+    # Normalize model name
+    if not model_name.endswith('.bin'):
+        # Check standard name (ggml-model.bin) or simple name (model.bin)
+        candidates = [
+            f"ggml-{model_name}.bin",
+            f"{model_name}.bin",
+            model_name
+        ]
+    else:
+        candidates = [model_name]
+        
+    # Check custom directory first (user preference)
+    for candidate in candidates:
+        path = os.path.join(custom_dir, candidate)
+        if os.path.exists(path):
+            return path
+            
+    # Check internal directory
+    for candidate in candidates:
+        path = os.path.join(internal_dir, candidate)
+        if os.path.exists(path):
+            return path
+            
+    # If not found, return the expected default path in custom dir
+    # This allows the caller to use this path for downloading
+    return os.path.join(custom_dir, candidates[0])
+
 def error_response(message: str, status_code: int = 400):
     """Return a standardized JSON error response"""
     return jsonify({
