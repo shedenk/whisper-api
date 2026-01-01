@@ -35,6 +35,8 @@ WORKDIR /app
 # CMake builds usually output to build/bin/
 # Breaking change: 'main' is now 'whisper-cli'
 COPY --from=builder /build/whisper.cpp/build/bin/whisper-cli /app/whisper-main
+# Copy shared libraries
+COPY --from=builder /build/whisper.cpp/build/src/libwhisper.so* /usr/lib/
 COPY --from=builder /build/whisper.cpp/models/download-ggml-model.sh /app/download-ggml-model.sh
 RUN chmod +x /app/whisper-main /app/download-ggml-model.sh
 
