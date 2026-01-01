@@ -43,6 +43,7 @@ services:
       - REDIS_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_BROKER_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_RESULT_BACKEND=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/1
+      - PYTHONPATH=/app
     depends_on:
       whisper-redis-service:
         condition: service_healthy
@@ -73,6 +74,7 @@ services:
       - REDIS_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_BROKER_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_RESULT_BACKEND=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/1
+      - PYTHONPATH=/app
     depends_on:
       whisper-redis-service:
         condition: service_healthy
@@ -96,6 +98,7 @@ services:
       - REDIS_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_BROKER_URL=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/0
       - CELERY_RESULT_BACKEND=redis://default:${REDIS_PASSWORD:-whisper-redis-pass}@whisper-redis-service:6379/1
+      - PYTHONPATH=/app
     depends_on:
       whisper-redis-service:
         condition: service_healthy
