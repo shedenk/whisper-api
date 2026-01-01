@@ -32,11 +32,16 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy whisper binary and script
-# CMake builds usually output to build/bin/
-# Breaking change: 'main' is now 'whisper-cli'
+# CMake builds output to build/bin/ for binaries
 COPY --from=builder /build/whisper.cpp/build/bin/whisper-cli /app/whisper-main
-# Copy shared libraries (libwhisper.so, libggml.so, etc.)
+
+# Copy ALL shared libraries from build/src/ to /usr/lib
+# This includes libwhisper.so, libggml.so, and any others needed
 COPY --from=builder /build/whisper.cpp/build/src/*.so* /usr/lib/
+
+# Ensure dynamic linker finds them
+ENV LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH
+
 COPY --from=builder /build/whisper.cpp/models/download-ggml-model.sh /app/download-ggml-model.sh
 RUN chmod +x /app/whisper-main /app/download-ggml-model.sh
 
