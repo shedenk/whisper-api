@@ -55,6 +55,22 @@ os.makedirs(app.config['MODEL_PATH'], exist_ok=True)
 WHISPER_MAIN = '/app/whisper.cpp/main'
 WHISPER_MODELS_DIR = '/app/whisper.cpp/models'
 
+# Debug: Check if whisper binary exists
+if os.path.exists(WHISPER_MAIN):
+    logger.info(f"Whisper binary found at {WHISPER_MAIN}")
+else:
+    logger.error(f"Whisper binary NOT found at {WHISPER_MAIN}")
+    # List directory contents to debug
+    parent_dir = os.path.dirname(WHISPER_MAIN)
+    if os.path.exists(parent_dir):
+        logger.info(f"Contents of {parent_dir}: {os.listdir(parent_dir)}")
+        # Check for bin directory just in case
+        bin_dir = os.path.join(parent_dir, 'bin')
+        if os.path.exists(bin_dir):
+            logger.info(f"Contents of {bin_dir}: {os.listdir(bin_dir)}")
+    else:
+        logger.error(f"Parent directory {parent_dir} does not exist!")
+
 
 class WhisperError(Exception):
     """Custom exception for Whisper operations"""
@@ -346,32 +362,45 @@ def download_model(model_name):
     try:
         model_name = secure_filename(model_name)
         
-        # Download model script path (moved to /app to avoid volume shadowing)
-        download_script = '/app/download-ggml-model.sh'
+        # Define model URL (HuggingFace)
+        # Handle cases where user passes 'base.en' or just 'base'
+        # The script usually expects just the name part for ggml-name.bin
+        # But here we construct the URL manually.
+        # Standard format: ggml-{model}.bin
         
-        if not os.path.exists(download_script):
-            return jsonify({
-                'status': 'error',
-                'message': 'Download script not found'
-            }), 500
+        # Valid models: tiny, tiny.en, base, base.en, small, small.en, medium, medium.en, large-v1, large-v2, large-v3
         
-        logger.info(f"Starting download of model: {model_name}")
+        target_file = f"ggml-{model_name}.bin"
+        if model_name.endswith('.bin'):
+            target_file = model_name
+            
+        url = f"https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{target_file}"
         
-        # Run download script
-        result = subprocess.run(
-            ['bash', download_script, model_name],
-            cwd=WHISPER_MODELS_DIR,
-            capture_output=True,
-            text=True,
-            timeout=3600  # 1 hour timeout
-        )
+        # Support old URL format fallback if needed or different naming convention
+        # actually, standard models are just ggml-name.bin
         
-        if result.returncode != 0:
-            error_msg = result.stderr or result.stdout
-            return jsonify({
-                'status': 'error',
-                'message': f"Download failed: {error_msg}"
-            }), 400
+        logger.info(f"Downloading model {model_name} from {url}")
+        
+        save_path = os.path.join(WHISPER_MODELS_DIR, target_file)
+        
+        # Use our utility function if available, or requests directly
+        # Since we want to save into models dir, let's do it here
+        
+        if os.path.exists(save_path):
+             logger.info(f"Model {model_name} already exists at {save_path}")
+             return jsonify({
+                'status': 'success',
+                'message': f'Model {model_name} already exists'
+            }), 200
+
+        # Stream download
+        with requests.get(url, stream=True, timeout=3600) as r:
+            r.raise_for_status()
+            with open(save_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    
+        logger.info(f"Model downloaded to {save_path}")
         
         # Clear model cache
         get_available_models.cache_clear()
@@ -381,11 +410,12 @@ def download_model(model_name):
             'message': f'Model {model_name} downloaded successfully'
         }), 200
         
-    except subprocess.TimeoutExpired:
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error downloading model: {e}")
         return jsonify({
             'status': 'error',
-            'message': 'Download timeout'
-        }), 408
+            'message': f"Download failed: {str(e)}"
+        }), 500
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         return jsonify({
