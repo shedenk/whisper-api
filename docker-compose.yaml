@@ -38,7 +38,7 @@ services:
     environment:
       - MODEL_PATH=/app/models
       - UPLOAD_PATH=/app/uploads
-      - API_HOST=http://whisper-api-server
+      - API_HOST=0.0.0.0
       - API_PORT=8000
       - THREADS=4
       - LOG_LEVEL=INFO
