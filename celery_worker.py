@@ -105,7 +105,7 @@ def transcribe_audio_task(self, audio_path: str, model: str = 'base.en',
             cmd,
             capture_output=True,
             text=True,
-            timeout=1800  # 30 minutes timeout for long files
+            timeout=3600  # 1 hour timeout for long files
         )
         
         if result.returncode != 0:
