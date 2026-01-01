@@ -227,6 +227,11 @@ def transcribe():
         # Handle input: either file upload or URL
         filepath = None
         
+        # Get form data or JSON data
+        data = request.form
+        if request.is_json:
+            data = request.get_json()
+        
         if 'file' in request.files:
             file = request.files['file']
             if file.filename == '':
@@ -252,8 +257,8 @@ def transcribe():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
             file.save(filepath)
             
-        elif 'file_url' in request.form:
-            file_url = request.form['file_url']
+        elif 'file_url' in data:
+            file_url = data['file_url']
             try:
                 from utils import download_file_from_url
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
@@ -291,8 +296,8 @@ def transcribe():
         logger.info(f"Processing file: {filepath}")
         
         # Get parameters
-        model = request.form.get('model', 'base.en')
-        language = request.form.get('language', None)
+        model = data.get('model', 'base.en')
+        language = data.get('language', None)
         
         # Validate model exists (basic check)
         model_name = model if model.endswith('.bin') else f"{model}.bin"
@@ -439,6 +444,11 @@ def transcribe_async():
         filepath = None
         filename = None
         
+        # Get form data or JSON data
+        data = request.form
+        if request.is_json:
+            data = request.get_json()
+        
         if 'file' in request.files:
             file = request.files['file']
             if file.filename == '':
@@ -449,8 +459,8 @@ def transcribe_async():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
             file.save(filepath)
             
-        elif 'file_url' in request.form:
-            file_url = request.form['file_url']
+        elif 'file_url' in data:
+            file_url = data['file_url']
             try:
                 from utils import download_file_from_url
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
@@ -484,8 +494,8 @@ def transcribe_async():
         logger.info(f"Processing async file: {filepath}")
         
         # Get parameters
-        model = request.form.get('model', 'base.en')
-        language = request.form.get('language', None)
+        model = data.get('model', 'base.en')
+        language = data.get('language', None)
         
         # Submit task to Celery
         task = transcribe_audio_task.delay(
