@@ -15,7 +15,11 @@ WORKDIR /build
 RUN git clone https://github.com/ggerganov/whisper.cpp.git && \
     cd whisper.cpp && \
     cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON && \
-    cmake --build build --config Release
+    cmake --build build --config Release && \
+    # Robustly collect all shared libraries
+    mkdir -p /libs && \
+    find build -name "*.so*" -exec cp {} /libs/ \; && \
+    ls -la /libs/ # Debug output
 
 # Runtime stage
 FROM ubuntu:22.04
@@ -35,9 +39,8 @@ WORKDIR /app
 # CMake builds output to build/bin/ for binaries
 COPY --from=builder /build/whisper.cpp/build/bin/whisper-cli /app/whisper-main
 
-# Copy ALL shared libraries from build/src/ to /usr/lib
-# This includes libwhisper.so, libggml.so, and any others needed
-COPY --from=builder /build/whisper.cpp/build/src/*.so* /usr/lib/
+# Copy ALL shared libraries collected in the builder stage
+COPY --from=builder /libs/ /usr/lib/
 
 # Ensure dynamic linker finds them
 ENV LD_LIBRARY_PATH=/usr/lib:$LD_LIBRARY_PATH

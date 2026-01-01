@@ -25,9 +25,7 @@ services:
 
   # API Server
   whisper-api:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     container_name: whisper-api-server
     ports:
       - "8001:8000"
@@ -60,9 +58,7 @@ services:
 
   # Celery Worker 1
   celery-worker-1:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    build: .
     container_name: whisper-worker-1
     command: celery -A celery_app.app worker --loglevel=info --concurrency=1 -n worker1@%h
     volumes:
@@ -85,9 +81,7 @@ services:
       - internal-net
   # Celery Worker 2
   celery-worker-2:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
+    build: .
     container_name: whisper-worker-2
     command: celery -A celery_app.app worker --loglevel=info --concurrency=1 -n worker2@%h
     volumes:
