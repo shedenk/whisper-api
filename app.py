@@ -52,7 +52,9 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['MODEL_PATH'], exist_ok=True)
 
 # Whisper.cpp paths
-WHISPER_MAIN = '/app/whisper.cpp/main'
+# Whisper.cpp paths
+WHISPER_MAIN = '/app/whisper-main'
+# Models dir is now purely internal or mounted, but we use app.config['MODEL_PATH'] mostly
 WHISPER_MODELS_DIR = '/app/whisper.cpp/models'
 
 # Debug: Check if whisper binary exists
@@ -60,16 +62,8 @@ if os.path.exists(WHISPER_MAIN):
     logger.info(f"Whisper binary found at {WHISPER_MAIN}")
 else:
     logger.error(f"Whisper binary NOT found at {WHISPER_MAIN}")
-    # List directory contents to debug
-    parent_dir = os.path.dirname(WHISPER_MAIN)
-    if os.path.exists(parent_dir):
-        logger.info(f"Contents of {parent_dir}: {os.listdir(parent_dir)}")
-        # Check for bin directory just in case
-        bin_dir = os.path.join(parent_dir, 'bin')
-        if os.path.exists(bin_dir):
-            logger.info(f"Contents of {bin_dir}: {os.listdir(bin_dir)}")
-    else:
-        logger.error(f"Parent directory {parent_dir} does not exist!")
+    # Check /app contents
+    logger.info(f"Contents of /app: {os.listdir('/app')}")
 
 
 class WhisperError(Exception):

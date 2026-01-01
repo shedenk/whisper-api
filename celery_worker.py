@@ -21,7 +21,8 @@ from config import Config
 logger = get_task_logger(__name__)
 
 # Whisper.cpp paths
-WHISPER_MAIN = '/app/whisper.cpp/main'
+# Whisper.cpp paths
+WHISPER_MAIN = '/app/whisper-main'
 
 # Redis connection for metadata storage
 redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

@@ -29,10 +29,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy whisper.cpp from builder
-COPY --from=builder /build/whisper.cpp /app/whisper.cpp
+# Copy whisper binary and script
+COPY --from=builder /build/whisper.cpp/main /app/whisper-main
 COPY --from=builder /build/whisper.cpp/models/download-ggml-model.sh /app/download-ggml-model.sh
-RUN chmod +x /app/download-ggml-model.sh
+RUN chmod +x /app/whisper-main /app/download-ggml-model.sh
 
 # Install Python dependencies
 COPY requirements.txt .
