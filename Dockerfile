@@ -11,9 +11,11 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 
 # Clone and build whisper.cpp
+# Use cmake as it is more robust for build output location
 RUN git clone https://github.com/ggerganov/whisper.cpp.git && \
     cd whisper.cpp && \
-    make
+    cmake -B build -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON && \
+    cmake --build build --config Release
 
 # Runtime stage
 FROM ubuntu:22.04
@@ -30,7 +32,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy whisper binary and script
-COPY --from=builder /build/whisper.cpp/main /app/whisper-main
+# CMake builds usually output to build/bin/
+COPY --from=builder /build/whisper.cpp/build/bin/main /app/whisper-main
 COPY --from=builder /build/whisper.cpp/models/download-ggml-model.sh /app/download-ggml-model.sh
 RUN chmod +x /app/whisper-main /app/download-ggml-model.sh
 
